@@ -1,0 +1,151 @@
+---
+title: "Low-Cost PM Sensor Tutorial"
+author: "Dr. Naomi Zimmerman"
+date: "1/12/2021"
+output: 
+  html_document:
+    toc: true
+bibliography: packages.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  fig.width = 7, 
+  fig.height = 5,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+## PM~2.5~ Assessment Tutorial
+In this tutorial, we will download some PurpleAir data from sensors installed at the Burnaby South Regulatory Monitoring Station in Vancouver, Canada. We will take advantage of the [@R-AirSensor] package
+For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r packages}
+library(installr)
+library(stringr)
+library(chron)
+library(prodlim)
+library(gtools)
+library(AirSensor)
+library(dplyr)
+library(ggplot2)
+library(MazamaSpatialUtils)
+
+setSpatialDataDir('~/Data/Spatial')
+loadSpatialData("NaturalEarthAdm1")
+initializeMazamaSpatialUtils()
+
+pas_CA <- pas_createNew(countryCodes = "CA",includePWFSL = TRUE,lookbackDays = 1,baseUrl = "https://www.purpleair.com/json?all=true")
+
+pat_Burnaby <- pat_createNew(
+  pas = pas_CA, 
+  label = "NAPSID: 100119 - 1",
+  startdate=20200901,
+  enddate=20201231)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r map, echo=FALSE}
+lon <- pat_Burnaby$meta$longitude
+lat <- pat_Burnaby$meta$latitude
+pas_vancouver <- 
+  pas_CA %>%
+  pas_filterNear(
+    longitude = lon, 
+    latitude = lat, 
+    radius = "25 km"
+  ) 
+pas_leaflet(pas_vancouver)
+```
+## Extract the data
+```{r data}
+data_Burnaby <- pat_extractData(pat_Burnaby)
+head(data_Burnaby)
+
+validation <- pat_externalFit(pat_Burnaby)
+
+ref_data <- validation[["model"]][["both_data$pwfsl_pm25"]]
+lcs_data <- validation[["model"]][["both_data$pa_pm25"]]
+
+mean_lcs = mean(lcs_data) #verified
+mean_ref = mean(ref_data) # verified
+bias = mean_lcs - mean_ref #verified
+sd_data = sqrt(var(lcs_data)) #verified
+r = cor(lcs_data,ref_data)  #verified
+          
+error = lcs_data - ref_data  #verified
+error_unbiased = error - bias #verified
+error_fractional = error/ref_data #verified
+error_fractional[ref_data == 0] = NA #verified
+          
+RMSE = sqrt(mean(error^2)) #verified
+MAE = mean(abs(error)) #verified
+            
+RMSE_unbiased = sqrt(mean(error_unbiased^2)) #verified
+MAE_unbiased =  mean(abs(error_unbiased)) #verified
+            
+MBE = mean(error_fractional,na.rm = TRUE) #verified
+CRMSE = sqrt(mean(error_fractional^2,na.rm = TRUE)) #verified
+
+
+# EPA Error Statistics
+ref_data_LDL = ref_data
+ref_data_LDL[ref_data_LDL<2]=NaN
+
+lcs_data_LDL = lcs_data
+lcs_data_LDL[lcs_data_LDL<2]=NaN
+
+LDL_index = which((!is.na(lcs_data_LDL)) & (!is.na(ref_data_LDL)))
+      if (!is.empty(LDL_index)) {
+            avg_data_LDL = (lcs_data_LDL + ref_data_LDL)/2
+            error_pct = 100*((lcs_data_LDL- ref_data_LDL)/avg_data_LDL)
+            error_pct[is.infinite(error_pct)] = NA
+            LDL_index_a = which(!is.na(error_pct))
+            error_pct = error_pct[LDL_index_a]
+            
+            d_25p = quantile(error_pct,0.25) #verified
+            d_75p = quantile(error_pct,0.75) #verified
+            
+            error_pct_squared = error_pct^2 #verified
+            error_pct_absolute = abs(error_pct) #verified
+            
+            n_data = length(LDL_index_a) #verified
+            
+            error_pct_var = var(error_pct) #verified
+            error_pct_std = sqrt(error_pct_var) #verified
+             
+            error_pct_squared_var = var(error_pct_squared) #verified
+            error_pct_squared_std = sqrt(error_pct_squared_var) #verified
+            
+            error_pct_sum = sum(error_pct) #verified
+            error_pct_absolute_sum = sum(error_pct_absolute) #verified
+            error_pct_squared_sum = sum(error_pct_squared) #verified
+            
+            AB = mean(error_pct_absolute) #verified
+            AS = sqrt(((n_data*error_pct_squared_sum)-(error_pct_absolute_sum^2))/(n_data*(n_data-1)))
+              
+            CV_Score = (sqrt(((n_data*error_pct_squared_sum)-(error_pct_sum^2))/(n_data*(n_data-1)))*sqrt((n_data-1)/(qchisq(0.1,(n_data-1)))))/100
+            
+            Bias_Score = (AB + ((qt(0.95,(n_data-1)))*(AS/sqrt(n_data))))/100
+            
+          } else {
+            CV_Score = NA
+            Bias_Score = NA
+          }
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+## References
+```{r, include=FALSE}
+knitr::write_bib(c(.packages()), "packages.bib")
+```
