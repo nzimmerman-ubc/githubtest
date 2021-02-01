@@ -24,28 +24,107 @@ For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
+
+
+
 ```{r packages}
+if (!require(installr)) install.packages('installr')
 library(installr)
+
+if (!require(stringr)) install.packages('stringr')
 library(stringr)
+
+if (!require(chron)) install.packages('chron')
 library(chron)
+
+if (!require(prodlim)) install.packages('prodlim')
 library(prodlim)
+
+if (!require(gtools)) install.packages('gtools')
 library(gtools)
+
+if (!require(AirSensor)) install.packages('AirSensor')
 library(AirSensor)
+
+if (!require(dplyr)) install.packages('dplyr')
 library(dplyr)
+
+if (!require(ggplot2)) install.packages('ggplot2')
 library(ggplot2)
+```
+
+## Set up a local directory
+
+To download the PurpleAir data in this tutorial, we will take advantage of the [@R-AirSensor] package. The AirSensor package needs to know where processed data will live. For this report, we will specify a local archiveBaseDir where downloaded and processed data will live. The following code specifies a local directory archive, checks for its existence and creates it if needed. It also checks to see if you have downloaded the required spatial data sets (to extract PurpleAir data by Country Code) and installs them if necessary.
+
+```{r set_up}
+
+## Create a folder in your home directory for this tutorial called 'PM_Sensor_Tutorial'
+new_wd <- path.expand("~/PM_Sensor_Tutorial")
+if ( !dir.exists(new_wd) ) {
+  dir.create(new_wd)
+}
+setwd(new_wd)
+
+## Create a folder in 'PM_Sensor_Tutorial' for storing the downloaded PurpleAir data.
+archiveBaseDir <- path.expand("~/PM_Sensor_Tutorial/Data")
+if ( !dir.exists(archiveBaseDir) ) {
+  dir.create(archiveBaseDir)
+}
+setArchiveBaseDir(archiveBaseDir)
+
+## Checking to see if you have the required spatial data, and installing it un a sub-folder of PM_Sensor_Tutorial/Data/Spatial if needed
+if (!require(MazamaSpatialUtils)) install.packages('MazamaSpatialUtils')
 library(MazamaSpatialUtils)
 
-setSpatialDataDir('~/Data/Spatial')
-loadSpatialData("NaturalEarthAdm1")
-initializeMazamaSpatialUtils()
+if ( !dir.exists('~/PM_Sensor_Tutorial/Data/Spatial') ) {
+  dir.create('~/PM_Sensor_Tutorial/Data/Spatial')
+  setSpatialDataDir('~/PM_Sensor_Tutorial/Data/Spatial')
+  installSpatialData()
+  installSpatialData('NaturalEarthAdm1')
+}
+```
+## Load synoptic data for Canada
 
-pas_CA <- pas_createNew(countryCodes = "CA",includePWFSL = TRUE,lookbackDays = 1,baseUrl = "https://www.purpleair.com/json?all=true")
+We will use the AirSensor pas_createNew() function to create a Purple Air Synoptic (pas) object containing all the spatial metadata associated with purple air monitors in Canada (we will call this object 'pas_CAN'). See: [https://mazamascience.github.io/AirSensor/articles/pas_introduction.html] for more details.
 
-pat_Burnaby <- pat_createNew(
-  pas = pas_CA, 
-  label = "NAPSID: 100119 - 1",
-  startdate=20200901,
-  enddate=20201231)
+The following code checks to make sure the pas_CAN file exists in your archiveBaseDir directory and, if missing, recreates it.
+
+```{r data_download}
+filePath_pas <- file.path(archiveBaseDir, "pas_CAN.rda")
+
+if ( !file.exists(filePath_pas) ) {
+  initializeMazamaSpatialUtils(spatialDataDir = "~/PM_Sensor_Tutorial/Data/Spatial")
+  pas_CAN <- pas_createNew(countryCodes = "CA", includePWFSL = TRUE, lookbackDays = 1,baseUrl = "https://www.purpleair.com/json?all=true")
+  save(pas_CAN, file = filePath_pas)
+}
+
+pas_CAN <- get(load(filePath_pas))
+```
+
+## Visualize snapshot of Air Quality in Canada
+```{r map}
+pas_leaflet(pas_CAN)
+```
+
+## Download data from a Vancouver PurpleAir (co-located with Regulatory Instruments)
+
+Metro Vancouver, the local regulatory agency, has two PurpleAir monitors co-located with their 'Burnaby South' Regulatory Monitoring Site [https://gis.metrovancouver.org/maps/Air]. This is a good site for our tutorial, as there is downloadable regulatory data and low-cost sensor data available. The following code snippet 
+
+```{r time_series_download}
+filePath_Burnaby <- file.path(archiveBaseDir, "pat_Burnaby.rda")
+
+if ( file.exists(filePath_Burnaby) ) {
+  pat_Burnaby <- get(load(filePath_Burnaby))
+} else {
+  pat_Burnaby <- pat_createNew(
+    pas = pas_CAN, 
+    label = "NAPSID: 100119 - 1", 
+    startdate = 20200901, 
+    enddate = 20201031
+  )
+  save(pat_Burnaby, file = filePath_Burnaby)
+}
 ```
 
 ## Including Plots
