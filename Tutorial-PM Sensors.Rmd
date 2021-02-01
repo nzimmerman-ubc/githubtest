@@ -131,11 +131,11 @@ if ( file.exists(filePath_Burnaby) ) {
 
 You can also embed plots, for example:
 
-```{r map, echo=FALSE}
+```{r map2, echo=FALSE}
 lon <- pat_Burnaby$meta$longitude
 lat <- pat_Burnaby$meta$latitude
 pas_vancouver <- 
-  pas_CA %>%
+  pas_CAN %>%
   pas_filterNear(
     longitude = lon, 
     latitude = lat, 
